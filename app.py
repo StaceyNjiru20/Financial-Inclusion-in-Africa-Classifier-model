@@ -1,77 +1,73 @@
 import streamlit as st
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
+import numpy as np
+import pickle
+import joblib
 
-# Load your dataset
-@st.cache_data
-def load_data():
-    return pd.read_csv('financecleaned_data.csv')  # Your cleaned dataset
+# Load the model
+@st.cache_resource
+def load_model():
+    return joblib.load('visualization and modelling.pkl')
 
-# Encode categorical columns using LabelEncoder
-def label_encode_columns(df):
-    le = LabelEncoder()
-    for col in df.columns:
-        if df[col].dtype == 'object':  # Only encode object (categorical) columns
-            df[col] = le.fit_transform(df[col])
-    return df
+# Load the label encoders
+@st.cache_resource
+def load_label_encoders():
+    with open('label_encoders.pkl', 'rb') as file:
+        return pickle.load(file)
 
-# Normalize the data using MinMaxScaler
-def normalize_data(df, scaler=None):
-    if scaler is None:
-        scaler = MinMaxScaler()
-        df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
-        return df_scaled, scaler
-    else:
-        df_scaled = pd.DataFrame(scaler.transform(df), columns=df.columns)
-        return df_scaled
+model = load_model()
+label_encoders = load_label_encoders()
 
-# Streamlit app starts here
-st.title("Random Forest Classifier Deployment")
+# Title for the web application
+st.title('Bank Account Ownership Prediction')
+st.write('Please provide the following details to predict whether an individual has a bank account.')
 
-# Load data
-df = load_data()
+# Collecting user inputs
+country = st.selectbox('Country', ['Kenya', 'Uganda', 'Tanzania', 'Rwanda'])
+location_type = st.radio('Location Type', ['Rural', 'Urban'])
+cellphone_access = st.selectbox('Cellphone Accessibility', ['Yes', 'No'])
+household_size = st.number_input('Household Size', min_value=1, max_value=50, value=1)
+age_of_respondent = st.number_input('Age of Respondent', min_value=18, max_value=100, value=25)
+gender_of_respondent = st.radio('Gender of Respondent', ['Male', 'Female'])
+marital_status = st.selectbox('Marital Status', ['Married/Living together', 'Divorced/separated', 'Widowed', 'Single/Never Married'])
+education_level = st.selectbox('Education Level', ['Secondary education', 'Primary education', 'No formal education', 'Vocational/Specialised training'])
+job_type = st.selectbox('Job Type', ['Dont Know/Refuse to answer', 'Farming and Fishing', 'Formally employed Government', 'Formally employed Private', 'Government Dependent', 'Informally employed', 'No Income', 'Other Income', 'Remittance Dependent', 'Self employed'])
+relationship_with_head = st.selectbox('Relationship with Head', ['Head of Household', 'Spouse', 'Child', 'Other relative', 'Parent'])
 
-# Encode categorical columns using LabelEncoder
-df_encoded = label_encode_columns(df)
+# Map user inputs to numeric values using the loaded encoders
+input_data = np.array([[
+    label_encoders['country'].transform([country])[0],
+    label_encoders['location_type'].transform([location_type])[0],
+    label_encoders['cellphone_access'].transform([cellphone_access])[0],
+    household_size,
+    age_of_respondent,
+    label_encoders['gender_of_respondent'].transform([gender_of_respondent])[0],
+    label_encoders['marital_status'].transform([marital_status])[0],
+    label_encoders['education_level'].transform([education_level])[0],
+    label_encoders['job_type'].transform([job_type])[0],
+    label_encoders['relationship_with_head'].transform([relationship_with_head])[0]
+]])
 
-# Target variable (replace with actual column name)
-target_variable = "bank_account"  # Adjust if necessary
+# Check the shape of input data
+st.write('Input data shape:', input_data.shape)
 
-# Define features and target variable
-X = df_encoded.drop(['bank_account', 'uniqueid', 'country', 'year'], axis=1)  # Dropping unnecessary columns
-y = df_encoded['bank_account']
+# Prediction labels dictionary (adjust as per your model's output)
+prediction_labels = {0: 'No Bank Account', 1: 'Bank Account'}
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Normalize the training and test data
-X_train_scaled, scaler = normalize_data(X_train)
-X_test_scaled = normalize_data(X_test, scaler=scaler)
-
-# Train Random Forest model
-rf = RandomForestClassifier(n_estimators=100, random_state=42)
-rf.fit(X_train_scaled, y_train)
-
-# User input form for new data
-st.header("Input New Data for Prediction")
-input_data = {}
-for col in X.columns:
-    input_data[col] = st.number_input(f"Enter {col}", value=float(X_train[col].mean()))  # Use mean as default value
-
-# Convert user input into dataframe
-input_df = pd.DataFrame([input_data])
-
-# Normalize input data using the scaler from training data
-normalized_input = normalize_data(input_df, scaler=scaler)
-
-# Predict with the model
-if st.button("Predict"):
-    prediction = rf.predict(normalized_input)
-    st.write(f"The predicted class is: {prediction[0]}")
-
-# Optionally, show model accuracy
-if st.checkbox("Show model accuracy"):
-    accuracy = rf.score(X_test_scaled, y_test)
-    st.write(f"Model accuracy: {accuracy * 100:.2f}%")
+if st.button('Predict'):
+    # Make prediction using the loaded model
+    prediction = model.predict(input_data)
+    
+    # Get prediction probabilities
+    prediction_proba = model.predict_proba(input_data)
+    
+    # Display raw prediction and probabilities for debugging
+    st.write(f'Raw prediction: {prediction}')
+    st.write(f'Prediction probabilities: {prediction_proba}')
+    
+    # Get the final predicted outcome (convert from numerical label to meaningful string)
+    prediction_result = prediction_labels[prediction[0]]
+    
+    # Display the final prediction result
+    st.write(f'Predicted outcome: {prediction_result}')
+    st.write(f'Probability of having a bank account: {prediction_proba[0][1]:.2f}')
+    st.write(f'Probability of not having a bank account: {prediction_proba[0][0]:.2f}')
