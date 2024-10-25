@@ -1,8 +1,8 @@
-python_version >= 3.8,<3.12
+# Specify package versions
 joblib==1.1.0
 matplotlib==3.5.0
 streamlit==1.12.0
 pandas==1.4.0
 numpy==1.22.0
 
-
+# Note: Pickle is part of the standard library and does not need to be included here.
